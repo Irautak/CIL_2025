@@ -44,7 +44,7 @@ Where experiments are run:
 
 To get started locally:
 
-1. Create a virtual environment (Python 3.12) and install JupyterLab if needed
+1. Create a virtual environment (Python 3.12), install JupyterLab if needed and link this environment to JupyterLab:
 
    ```bash
    mkdir <env_name>
@@ -55,7 +55,7 @@ To get started locally:
    pip install ipykernel
    python -m ipykernel install --user --name=<env_name>
    ```
-2. Activate JupyterLab
+2. Activate JupyterLab:
 
   ```bash
   jupyter lab --port 7013
