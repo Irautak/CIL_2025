@@ -1,0 +1,11 @@
+# Python cache
+**/__pycache__/
+
+# Jupyter notebook checkpoints
+**/.ipynb_checkpoints/
+
+# wandb logs inside notebooks
+notebooks/wandb/
+
+# Local datasets
+data/
