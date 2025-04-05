@@ -1,0 +1,11 @@
+pillow
+pytorch_model_summary
+albumentations
+tqdm
+numpy
+torch
+torchvision
+timm
+segmentation-models-pytorch
+wandb
+matplotlib
