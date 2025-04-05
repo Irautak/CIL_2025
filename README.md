@@ -40,6 +40,28 @@ Where experiments are run:
 - For the data download notebook, your Kaggle API key is needed (get it from your [Kaggle account](https://www.kaggle.com/settings)).
 
 ---
+## ⚙️ Environment Setup
+
+To get started locally:
+
+1. Create a virtual environment (Python 3.12) and install JupyterLab if needed
+
+   ```bash
+   mkdir <env_name>
+   python3.12 -m venv <env_name>
+   source <env_name>/bin/activate
+   pip install jupyterlab
+   pip install -r requirements.txt
+   pip install ipykernel
+   python -m ipykernel install --user --name=<env_name>
+   ```
+2. Activate JupyterLab
+
+  ```bash
+  jupyter lab --port 7013
+  ```
+3. Now it's working on localhost:7013
+---
 
 ## 💡 Potential Improvements
 
@@ -55,6 +77,9 @@ Some areas we could explore next:
 - [ ] Add more advanced augmentations
 - [ ] Try different model variants
 - [ ] Run ablation studies on loss functions, optimizers, and hyperparameters
+
+## How to setup working environment
+
 
 ---
 
