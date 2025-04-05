@@ -221,7 +221,7 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None):
     }
     if epoch is not None:
         for key in metrics.keys():
-            wandb.log({"train/" + str(key): metrics[key]}, epoch)
+            wandb.log({"val/" + str(key): metrics[key]}, epoch)
 
     return metrics
 
