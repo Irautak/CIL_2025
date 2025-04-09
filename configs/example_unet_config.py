@@ -3,7 +3,7 @@ from models import unet_convnextv2, example_unet
 #import albumentations as A
 from torchvision import transforms as transforms
 from pathlib import Path
-from albumentations.pytorch import ToTensorV2
+#from albumentations.pytorch import ToTensorV2
 from copy import deepcopy
 import sys
 import os
@@ -55,7 +55,7 @@ optimizer = lambda x: torch.optim.AdamW(x, **optimizer_params)
 loss_params = dict()
 loss = nn.MSELoss(**loss_params)
 
-
+additional_params = dict()
 # Augmentation initing
 
 transform_train = transforms.Compose([
