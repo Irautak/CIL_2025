@@ -129,17 +129,18 @@ class MSGIL_NORM_Loss(nn.Module):
 
         return gradient_loss
 
-    def forward(self, pred, gt):
+    def forward(self, pred, gt, already_log = False):
         mask = gt > self.valid_threshold
-        pred = torch.clamp(pred, min=1e-6)
-        gt = torch.clamp(gt, min=1e-6)
-        
         grad_term = 0.0
-        #gt_mean = minmax_meanstd[:, 2]
-        #gt_std = minmax_meanstd[:, 3]
-        #gt_trans = (gt - gt_mean[:, None, None, None]) / (gt_std[:, None, None, None] + 1e-8)
-        log_pred = torch.log(pred)
-        log_gt = torch.log(gt)
+        
+        if not already_log:
+            pred = torch.clamp(pred, min=self.valid_threshold)
+            gt = torch.clamp(gt, min=self.valid_threshold)
+            log_pred = torch.log(pred)
+            log_gt = torch.log(gt)
+        else:
+            log_pred = pred
+            log_gt = gt
         
         for i in range(self.scales_num):
             d_gt = log_gt[:, :, ::2**i, ::2**i]

@@ -5,8 +5,17 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 
+def denormalize_log_prediction(log_depth, min_depth=0.001, max_depth=10.0):
+    # Convert from normalized [0,1] back to log space
+    #log_depth = normalized_depth * (np.log(max_depth) - np.log(min_depth)) + np.log(min_depth)
+    
+    # Convert from log space back to linear depth in meters
+    depth_map = torch.exp(log_depth)
+    
+    return depth_map
+
 def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epochs, device, exp_path,
-               mask_indicator=None):
+               mask_indicator=None, log_input=False):
     """Train the model and save the best based on validation metrics"""
     best_val_loss = float('inf')
     best_epoch = 0
@@ -22,12 +31,12 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
         
         for inputs, targets, _ in tqdm(train_loader, desc="Training"):
             inputs, targets = inputs.to(device), targets.to(device)
+            # Zero the gradients
+            optimizer.zero_grad()
             if mask_indicator:
                 with torch.no_grad():
                     mask = (targets != mask_indicator)
                     masked_targets = targets * mask
-            # Zero the gradients
-            optimizer.zero_grad()
             
             # Forward pass
             outputs = model(inputs)
@@ -72,7 +81,7 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
         ### I guess I need to add it into the previous loop, but for now it will do ####
         ### Additional metrics logging ####
         evaluate_model(model, val_loader, device, exp_path=None, epoch=epoch,
-                       mask_indicator=mask_indicator)
+                       mask_indicator=mask_indicator, log_input=log_input)
         
         print(f"Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
         
@@ -99,7 +108,7 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
     return model
 
 def evaluate_model(model, val_loader, device, exp_path, epoch = None,
-                  mask_indicator=None):
+                  mask_indicator=None, log_input=False):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
     
@@ -144,6 +153,10 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
             
             if mask_indicator:
                 outputs = outputs * mask
+            
+            if log_input:
+                outputs = denormalize_log_prediction(outputs)
+                targets = denormalize_log_prediction(targets)
             
             # Calculate metrics
             abs_diff = torch.abs(outputs - targets)
@@ -263,7 +276,7 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
 
     return metrics
 
-def generate_test_predictions(model, test_loader, device, exp_path):
+def generate_test_predictions(model, test_loader, device, exp_path, log_input=False):
     """Generate predictions for the test set without ground truth"""
     model.eval()
     
@@ -286,6 +299,9 @@ def generate_test_predictions(model, test_loader, device, exp_path):
                 align_corners=True
             )
             
+            if log_input:
+                outputs = denormalize_log_prediction(outputs)
+            
             # Save all test predictions
             for i in range(batch_size):
                 # Get filename without extension
@@ -301,7 +317,7 @@ def generate_test_predictions(model, test_loader, device, exp_path):
         # Clear cache after test predictions
         torch.cuda.empty_cache()
 
-def visualize_test_predictions(model, test_loader, device, exp_path):
+def visualize_test_predictions(model, test_loader, device, exp_path, log_input=True):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
     
@@ -323,6 +339,9 @@ def visualize_test_predictions(model, test_loader, device, exp_path):
                 mode='bilinear',
                 align_corners=True
             )
+            
+            if log_input:
+                outputs = denormalize_log_prediction(outputs)
             
             for i in range(len(inputs)):
 
