@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epochs, device, exp_path,
-               mask_indicator=None):
+               mask_indicator=None, is_extended_model=False, use_uncertainty_map=False):
     """Train the model and save the best based on validation metrics"""
     best_val_loss = float('inf')
     best_epoch = 0
@@ -16,46 +16,142 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
     for epoch in range(num_epochs):
         print(f"Epoch {epoch+1}/{num_epochs}")
         
-        # Training phase
-        model.train()
         train_loss = 0.0
-        
-        for inputs, targets, _ in tqdm(train_loader, desc="Training"):
-            inputs, targets = inputs.to(device), targets.to(device)
-            if mask_indicator:
-                with torch.no_grad():
-                    mask = (targets != mask_indicator)
-                    masked_targets = targets * mask
-            # Zero the gradients
-            optimizer.zero_grad()
-            
-            # Forward pass
-            outputs = model(inputs)
-            
-            if mask_indicator:
-                outputs = outputs * mask
-                loss = loss_func(outputs, masked_targets)
-            else: loss = loss_func(outputs, targets)
-            # Backward pass and optimize
-            loss.backward()
-            optimizer.step()
-            
-            train_loss += loss.item() * inputs.size(0)
-        
-        
-        train_loss /= len(train_loader.dataset)
-        train_losses.append(train_loss)
-        
-        # Validation phase
-        model.eval()
         val_loss = 0.0
+
+        if is_extended_model: 
+            # Training phase
+            model.train()
+            for rbs, depths_stack, gt_depths, _ , uncertainty_maps in tqdm(train_loader, desc="Training"):
+                rgbs,  depths_stack, gt_depths = rbs.to(device), depths_stack.to(device), gt_depths.to(device)
+                uncertainty_maps = uncertainty_maps.to(device) if uncertainty_maps is not None else None
+                if mask_indicator:
+                    with torch.no_grad():
+                        mask = (gt_depths != mask_indicator)
+                        masked_targets = gt_depths * mask
+                # Zero the gradients
+                optimizer.zero_grad()
+                # Forward pass
+                outputs = model(rgbs, depths_stack, uncertainty_maps)
+                # Calculate the loss
+                if mask_indicator:
+                    outputs = outputs * mask
+                    loss = loss_func(outputs, masked_targets)
+                else: loss = loss_func(outputs, gt_depths)
+                # Backward pass and update params
+                loss.backward()
+                optimizer.step()
+
+                train_loss += loss.item() * rgbs.size(0)
+            
+            # Validation phase
+            model.eval()
+
+            mae = 0.0
+            rmse = 0.0
+            rel = 0.0
+            delta1 = 0.0
+            delta2 = 0.0
+            delta3 = 0.0
+            sirmse = 0.0
+            
+            total_samples = 0
+            target_shape = None
+            valid_pixels = 0
+            
+            with torch.no_grad():
+                for rbs, depths_stack, gt_depths, _ , uncertainty_maps in tqdm(val_loader, desc="Validation"):
+                    rgbs,  depths_stack, targets = rbs.to(device), depths_stack.to(device), gt_depths.to(device)
+                    uncertainty_maps = uncertainty_maps.to(device) if uncertainty_maps is not None else None
+                    batch_size = rgbs.size(0)
+                    total_samples += batch_size
+
+                    if mask_indicator:
+                            mask = (gt_depths != mask_indicator)
+                            targets = targets * mask
+                            valid_pixels += mask.sum().item()
+
+                    if target_shape is None:
+                        target_shape = targets.shape
+                    # Forward pass
+                    outputs = model(rgbs, depths_stack, uncertainty_maps)
+                    if mask_indicator:
+                            outputs = outputs * mask
+                            loss = loss_func(outputs, masked_targets)
+                    else: loss = loss_func(outputs, targets)
+                    
+                    val_loss += loss.item() * rgbs.size(0)
+
+                    # Resize outputs to match target dimensions
+                    outputs = nn.functional.interpolate(
+                        outputs,
+                        size=targets.shape[-2:],  # Match height and width of targets
+                        mode='bilinear',
+                        align_corners=True
+                    )
+                    
+                    if mask_indicator:
+                        outputs = outputs * mask
+                    
+                    # Calculate metrics
+                    abs_diff = torch.abs(outputs - targets)
+                    mae += torch.sum(abs_diff).item()
+                    rmse += torch.sum(torch.pow(abs_diff, 2)).item()
+                    rel += torch.sum(abs_diff / (targets + 1e-6)).item()
+                    
+                    # Calculate scale-invariant RMSE for each image in the batch
+                    for i in range(batch_size):
+                        # Convert tensors to numpy arrays
+                        pred_np = outputs[i].cpu().squeeze().numpy()
+                        target_np = targets[i].cpu().squeeze().numpy()
+                        
+                        EPSILON = 1e-6
+                        
+                        valid_target = target_np > EPSILON
+                        if not np.any(valid_target):
+                            continue
+                        
+                        target_valid = target_np[valid_target]
+                        pred_valid = pred_np[valid_target]
+                        
+                        log_target = np.log(target_valid)
+                        
+                        pred_valid = np.where(pred_valid > EPSILON, pred_valid, EPSILON)
+                        log_pred = np.log(pred_valid)
+                        
+                        # Calculate scale-invariant error
+                        diff = log_pred - log_target
+                        diff_mean = np.mean(diff)
+                        
+                        # Calculate RMSE for this image
+                        sirmse += np.sqrt(np.mean((diff - diff_mean) ** 2))
+                    
+                    # Calculate thresholded accuracy
+                    max_ratio = torch.max(outputs / (targets + 1e-6), targets / (outputs + 1e-6))
+                    delta1 += torch.sum(max_ratio < 1.25).item()
+                    delta2 += torch.sum(max_ratio < 1.25**2).item()
+                    delta3 += torch.sum(max_ratio < 1.25**3).item()
+
+                    
+                # Save after all batches are done
+                save_logs(mae=mae, rmse=rmse, sirmse=sirmse, rel=rel, delta1=delta1, delta2=delta2, delta3=delta3, 
+                            valid_pixels=valid_pixels, epoch=epoch, total_samples=total_samples, target_shape=target_shape,
+                            mask_indicator=mask_indicator)
+                    
+                
         
-        with torch.no_grad():
-            for inputs, targets, _ in tqdm(val_loader, desc="Validation"):
+        else:
+            # Training phase
+            model.train()
+            for inputs, targets, _ in tqdm(train_loader, desc="Training"):
                 inputs, targets = inputs.to(device), targets.to(device)
                 if mask_indicator:
-                    mask = (targets != mask_indicator)
-                    masked_targets = targets * mask
+                    with torch.no_grad():
+                        mask = (targets != mask_indicator)
+                        masked_targets = targets * mask
+                # Zero the gradients
+                optimizer.zero_grad()
+                
                 # Forward pass
                 outputs = model(inputs)
                 
@@ -63,16 +159,45 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
                     outputs = outputs * mask
                     loss = loss_func(outputs, masked_targets)
                 else: loss = loss_func(outputs, targets)
+                # Backward pass and optimize
+                loss.backward()
+                optimizer.step()
                 
-                val_loss += loss.item() * inputs.size(0)
+                train_loss += loss.item() * inputs.size(0)
+
+                # Validation phase
+                model.eval()
+                val_loss = 0.0
+                
+                with torch.no_grad():
+                    for inputs, targets, _ in tqdm(val_loader, desc="Validation"):
+                        inputs, targets = inputs.to(device), targets.to(device)
+                        if mask_indicator:
+                            mask = (targets != mask_indicator)
+                            masked_targets = targets * mask
+                        # Forward pass
+                        outputs = model(inputs)
+                        
+                        if mask_indicator:
+                            outputs = outputs * mask
+                            loss = loss_func(outputs, masked_targets)
+                        else: loss = loss_func(outputs, targets)
+                        
+                        val_loss += loss.item() * inputs.size(0)
+                
+                ### I guess I need to add it into the previous loop, but for now it will do ####
+                ### Additional metrics logging ####
+                evaluate_model(model, val_loader, device, exp_path=None, epoch=epoch,
+                       mask_indicator=mask_indicator)
+                
+        
+        train_loss /= len(train_loader.dataset)
+        train_losses.append(train_loss)
+        
         
         val_loss /= len(val_loader.dataset)
         val_losses.append(val_loss)
         
-        ### I guess I need to add it into the previous loop, but for now it will do ####
-        ### Additional metrics logging ####
-        evaluate_model(model, val_loader, device, exp_path=None, epoch=epoch,
-                       mask_indicator=mask_indicator)
         
         print(f"Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
         
@@ -96,7 +221,46 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
     # Load the best model
     model.load_state_dict(torch.load(f'{exp_path}/best_model_{best_epoch}.pt'))
     
-    return model
+    return model 
+
+
+def save_logs(mae, rmse, rel, sirmse, delta1, delta2, delta3, valid_pixels, epoch, total_samples, target_shape, mask_indicator=None):
+    
+    # Calculate final metrics using stored target shape
+    
+    if mask_indicator:
+        
+        mae /= valid_pixels
+        rmse = np.sqrt(rmse / valid_pixels)
+        rel /= valid_pixels
+        sirmse = sirmse / total_samples
+        delta1 /= valid_pixels
+        delta2 /= valid_pixels
+        delta3 /= valid_pixels
+        
+    else:
+        total_pixels = target_shape[1] * target_shape[2] * target_shape[3]  # channels * height * width
+        mae /= total_samples * total_pixels
+        rmse = np.sqrt(rmse / (total_samples * total_pixels))
+        rel /= total_samples * total_pixels
+        sirmse = sirmse / total_samples
+        delta1 /= total_samples * total_pixels
+        delta2 /= total_samples * total_pixels
+        delta3 /= total_samples * total_pixels
+    
+    metrics = {
+        'MAE': mae,
+        'RMSE': rmse,
+        'siRMSE': sirmse,
+        'REL': rel,
+        'Delta1': delta1,
+        'Delta2': delta2,
+        'Delta3': delta3
+    }
+    if epoch is not None:
+        for key in metrics.keys():
+            wandb.log({"val/" + str(key): metrics[key]}, epoch)
+
 
 def evaluate_model(model, val_loader, device, exp_path, epoch = None,
                   mask_indicator=None):
