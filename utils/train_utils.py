@@ -427,40 +427,73 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
 
     return metrics
 
-def generate_test_predictions(model, test_loader, device, exp_path):
+def generate_test_predictions(model, test_loader, device, exp_path, is_exntended_model=False):
     """Generate predictions for the test set without ground truth"""
     model.eval()
-    
     # # Ensure predictions directory exists
     # ensure_dir(predictions_dir)
     os.makedirs(os.path.join(exp_path, "results"), exist_ok=True)
-    with torch.no_grad():
-        for inputs, filenames in tqdm(test_loader, desc="Generating Test Predictions"):
-            inputs = inputs.to(device)
-            batch_size = inputs.size(0)
-            
-            # Forward pass
-            outputs = model(inputs)
-            
-            # Resize outputs to match original input dimensions (426x560)
-            outputs = nn.functional.interpolate(
-                outputs,
-                size=(426, 560),  # Original input dimensions
-                mode='bilinear',
-                align_corners=True
-            )
-            
-            # Save all test predictions
-            for i in range(batch_size):
-                # Get filename without extension
-                filename = filenames[i].split(' ')[1]
+
+    # Uses feature maps
+    if is_exntended_model:
+        with torch.no_grad():
+            for rgbs, stacked_depth_maps, filenames, uncertainty_maps in tqdm(test_loader, desc="Generating Test Predictions"):
+                rgbs = rgbs.to(device)
+                stacked_depth_maps =stacked_depth_maps.to(device)
+                uncertainty_maps = uncertainty_maps.to(device) if uncertainty_maps is not None else None
+                batch_size = rgbs.size(0)
                 
-                # Save depth map prediction as numpy array
-                depth_pred = outputs[i].cpu().squeeze().numpy()
-                np.save(os.path.join(os.path.join(exp_path, "results"), f"{filename}"), depth_pred)
-            
-            # Clean up memory
-            del inputs, outputs
+                # Forward pass
+                outputs = model(rgbs, stacked_depth_maps, uncertainty_maps)
+                
+                # Resize outputs to match original input dimensions (426x560)
+                outputs = nn.functional.interpolate(
+                    outputs,
+                    size=(426, 560),  # Original input dimensions
+                    mode='bilinear',
+                    align_corners=True
+                )
+                
+                # Save all test predictions
+                for i in range(batch_size):
+                    # Get filename without extension
+                    filename = filenames[i].split(' ')[1]
+                    
+                    # Save depth map prediction as numpy array
+                    depth_pred = outputs[i].cpu().squeeze().numpy()
+                    np.save(os.path.join(os.path.join(exp_path, "results"), f"{filename}"), depth_pred)
+                
+                # Clean up memory
+                del rgbs, stacked_depth_maps, uncertainty_maps, outputs
+    
+    else:
+        with torch.no_grad():
+            for inputs, filenames in tqdm(test_loader, desc="Generating Test Predictions"):
+                inputs = inputs.to(device)
+                batch_size = inputs.size(0)
+                
+                # Forward pass
+                outputs = model(inputs)
+                
+                # Resize outputs to match original input dimensions (426x560)
+                outputs = nn.functional.interpolate(
+                    outputs,
+                    size=(426, 560),  # Original input dimensions
+                    mode='bilinear',
+                    align_corners=True
+                )
+                
+                # Save all test predictions
+                for i in range(batch_size):
+                    # Get filename without extension
+                    filename = filenames[i].split(' ')[1]
+                    
+                    # Save depth map prediction as numpy array
+                    depth_pred = outputs[i].cpu().squeeze().numpy()
+                    np.save(os.path.join(os.path.join(exp_path, "results"), f"{filename}"), depth_pred)
+                
+                # Clean up memory
+                del inputs, outputs
         
         # Clear cache after test predictions
         torch.cuda.empty_cache()
