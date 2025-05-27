@@ -20,7 +20,7 @@ sys.path.append(str(root))
 # What you want to do
 WANDB_NOTES = 'test_ConvNext'
 
-dataset_path = "/home/v.lomtev/CIL/data"
+dataset_path = "/home/v.lomtev/CIL/CIL_2025/data"
 
 
 # train parameters
@@ -32,11 +32,11 @@ train_bs: int = 8 #16
 num_workers: int = 16
 
 val_bs: int = 8
-device = 'cuda:3'  # You need to change it for your GPU
+device = 'cuda:0'  # You need to change it for your GPU
 
 random_seed: int = 42
 
-val_part: float = 0.15
+val_part: float = 0.05
 # model architecture configs
 # model_type = 'BaseUnet'
 # optimizer = 'AdamW'
@@ -184,21 +184,25 @@ transform_train = transforms.Compose([
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
                   hue=0.1),  # Data augmentation
     #transforms.RandomInvert(),
-    transforms.Pad([8, 11, 8, 11]),
+    #transforms.Pad([8, 11, 8, 11]),
+    transforms.Pad([0, 67, 0, 67]),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
                 0.229, 0.224, 0.225]),  # 0, 255 -> 0, 1
       # HWC -> CHW
+    transforms.Resize((384, 384))
 ])
 
 
 transform_val = transforms.Compose([
     # A.CenterCrop(width=window_size, height=window_size,p=1),
     transforms.Resize(img_size),
-    transforms.Pad([8, 11, 8, 11]),
+    #transforms.Pad([8, 11, 8, 11]),
+    transforms.Pad([0, 67, 0, 67]),
     transforms.ToTensor(), # HWC -> CHW
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
                 0.229, 0.224, 0.225]),  # 0, 255 -> 0, 1  
+    transforms.Resize((384, 384))
 ])
 
 def target_transform(depth, min_depth=0.001, max_depth=10.0):
