@@ -41,18 +41,18 @@ class Unet(torch.nn.Module):
         
 
         if depth_stack is not None:
-            print(f"RGB shape: {rgb.shape}")
-            print(f"Depth stack shape: {depth_stack.shape}")
+            #print(f"RGB shape: {rgb.shape}")
+            #print(f"Depth stack shape: {depth_stack.shape}")
             
             inputs_list = [rgb, depth_stack]  # use a temporary list
             if self.uncertainty_included and uncertainty_map is not None:
                 inputs_list.append(uncertainty_map)
             
             inputs = torch.cat(inputs_list, dim=1)  # stack all inputs along channel dimension
-            print(f"Num of inputs {len(inputs_list)}")
-            print(f"Inputs shape: {inputs.shape}")
+            #print(f"Num of inputs {len(inputs_list)}")
+            #print(f"Inputs shape: {inputs.shape}")
 
-        print(f"Inputs shape: {inputs.shape}")
+        #print(f"Inputs shape: {inputs.shape}")
 
         depth_log = self.depth_model(inputs)  # Predict log-depth
         #depth_out = self.upsample(depth_log)

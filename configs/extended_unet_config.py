@@ -22,8 +22,8 @@ sys.path.append(str(root))
 WANDB_NOTES = 'train_ExtendedUnetwSotaDepths'
 
 # File paths and directory names
-dataset_path = "/home/lucijatonkovic/Documents/Data/CIL/ethz-cil-monocular-depth-estimation-2025/"
-depth_maps_path = "/home/lucijatonkovic/Documents/Data/CIL/PretrainedDepths"
+dataset_path = "/home/v.lomtev/CIL/CIL_2025/data/"
+depth_maps_path = "/home/v.lomtev/CIL/CIL_2025/data/TrainDepthMaps/"
 depth_model_names = ["DepthAnythingV2", "ZoeDepth", "DistillAnyDepth", "UniDepth"]
 
 
@@ -33,8 +33,8 @@ epochs: int = 50
 train_bs: int = 8
 num_workers: int = 16
 val_bs: int = 16
-#device = 'cuda:3'  
-device = 'cpu'
+device = 'cuda:3'  
+#device = 'cpu'
 
 random_seed: int = 42
 

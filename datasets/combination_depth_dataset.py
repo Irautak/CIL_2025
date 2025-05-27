@@ -43,6 +43,7 @@ class CombDepthDataset(torch.utils.data.Dataset):
                 base_name = os.path.basename(rgb_path)
                 idx_part = base_name.split('_')[1]
                 depth_path = os.path.join(self.depths_dir, model, f"sample_{idx_part}_depth.npy")
+
                 depth_map = np.load(depth_path).astype(np.float32) # Numpy arr: (H, W)
                 # Make sure it's 2D: (H, W), some models generated a different shape numpy array
                 while depth_map.ndim > 2:
