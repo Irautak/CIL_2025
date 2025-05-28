@@ -21,7 +21,8 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
     best_epoch = 0
     train_losses = []
     val_losses = []
-        
+    if mask_indicator is not None and log_input:
+        mask_indicator = -1e20
     for epoch in range(num_epochs):
         print(f"Epoch {epoch+1}/{num_epochs}")
         
@@ -43,7 +44,10 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
             
             if mask_indicator:
                 outputs = outputs * mask
-                loss = loss_func(outputs, masked_targets)
+                loss = (mask.numel()/max(mask.numel()//2, mask.sum())) * loss_func(outputs,
+                                                                                   masked_targets)
+                #print(mask.sum(), mask.numel(), torch.min(masked_targets))
+                #print(loss)
             else: loss = loss_func(outputs, targets)
             # Backward pass and optimize
             loss.backward()

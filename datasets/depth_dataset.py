@@ -37,8 +37,19 @@ class DepthDataset(torch.utils.data.Dataset):
                 rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
                 if self.transform:
                     transform_res = self.transform(image=rgb, mask=depth)
-                    rgb = transform_res["image"]
-                    depth = transform_res["mask"][11:-11, 8:-8].unsqueeze(0)
+                    #print("RGB SHAPE:", transform_res["image"].shape)
+                    rgb = transform_res["image"].unsqueeze(0)
+                    rgb = torch.nn.functional.interpolate(rgb, size=(384, 384),
+                                                         mode="bilinear", align_corners=True).squeeze()
+                    
+                    #print("RGB SHAPE3:", rgb.shape)
+                    depth = transform_res["mask"][67:-67, :]
+                    depth = torch.where(depth == -1.0,
+                                        torch.tensor(-1e20,
+                                                     dtype=depth.dtype, device=depth.device),
+                                        torch.log(torch.clamp(depth, 0.001, 10.0))).unsqueeze(0)
+                    #print("DEPTH SHAPE:", depth.shape)
+                    
             else:
                 # else uses torchvision
                 depth = torch.from_numpy(depth)
@@ -62,7 +73,9 @@ class DepthDataset(torch.utils.data.Dataset):
                 rgb = cv2.cvtColor(cv2.imread(rgb_path), cv2.COLOR_BGR2RGB)
                 if self.transform:
                     transform_res = self.transform(image=rgb)
-                    rgb = transform_res["image"]
+                    rgb = transform_res["image"].unsqueeze(0)
+                    rgb = torch.nn.functional.interpolate(rgb, size=(384, 384),
+                                                         mode="bilinear", align_corners=True).squeeze()
             else:
                 rgb = Image.open(rgb_path).convert('RGB')
 
