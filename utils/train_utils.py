@@ -5,13 +5,22 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 
-def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epochs, device, exp_path):
+def denormalize_log_prediction(log_depth):
+    
+    # Convert from log space back to linear depth in meters
+    depth_map = torch.exp(log_depth)
+    
+    return depth_map
+
+def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epochs, device, exp_path,
+               mask_indicator=None, log_input=False):
     """Train the model and save the best based on validation metrics"""
     best_val_loss = float('inf')
     best_epoch = 0
     train_losses = []
     val_losses = []
-        
+    if mask_indicator is not None and log_input:
+        mask_indicator = -1e20 # We simply want the mask indicator to be out of bounds for any adequate data points we have
     for epoch in range(num_epochs):
         print(f"Epoch {epoch+1}/{num_epochs}")
         
@@ -21,13 +30,23 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
         
         for inputs, targets, _ in tqdm(train_loader, desc="Training"):
             inputs, targets = inputs.to(device), targets.to(device)
-            
             # Zero the gradients
             optimizer.zero_grad()
+            if mask_indicator:
+                with torch.no_grad():
+                    mask = (targets != mask_indicator)
+                    masked_targets = targets * mask
             
             # Forward pass
             outputs = model(inputs)
-            loss = loss_func(outputs, targets)
+            
+            if mask_indicator:
+                outputs = outputs * mask
+                loss = (mask.numel()/max(mask.numel()//2, mask.sum())) * loss_func(outputs,
+                                                                                   masked_targets)
+                #print(mask.sum(), mask.numel(), torch.min(masked_targets))
+                #print(loss)
+            else: loss = loss_func(outputs, targets)
             # Backward pass and optimize
             loss.backward()
             optimizer.step()
@@ -45,10 +64,16 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
         with torch.no_grad():
             for inputs, targets, _ in tqdm(val_loader, desc="Validation"):
                 inputs, targets = inputs.to(device), targets.to(device)
-                
+                if mask_indicator:
+                    mask = (targets != mask_indicator)
+                    masked_targets = targets * mask
                 # Forward pass
                 outputs = model(inputs)
-                loss = loss_func(outputs, targets)
+                
+                if mask_indicator:
+                    outputs = outputs * mask
+                    loss = loss_func(outputs, masked_targets)
+                else: loss = loss_func(outputs, targets)
                 
                 val_loss += loss.item() * inputs.size(0)
         
@@ -57,7 +82,8 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
         
         ### I guess I need to add it into the previous loop, but for now it will do ####
         ### Additional metrics logging ####
-        evaluate_model(model, val_loader, device, exp_path=None, epoch=epoch)
+        evaluate_model(model, val_loader, device, exp_path=None, epoch=epoch,
+                       mask_indicator=mask_indicator, log_input=log_input)
         
         print(f"Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
         
@@ -83,7 +109,8 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
     
     return model
 
-def evaluate_model(model, val_loader, device, exp_path, epoch = None):
+def evaluate_model(model, val_loader, device, exp_path, epoch = None,
+                  mask_indicator=None, log_input=False):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
     
@@ -98,17 +125,24 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None):
     total_samples = 0
     target_shape = None
     
+    valid_pixels = 0
     with torch.no_grad():
         for inputs, targets, filenames in tqdm(val_loader, desc="Evaluating"):
             inputs, targets = inputs.to(device), targets.to(device)
             batch_size = inputs.size(0)
             total_samples += batch_size
             
+            if mask_indicator:
+                mask = (targets != mask_indicator)
+                targets = targets * mask
+                valid_pixels += mask.sum().item()
+            
             if target_shape is None:
                 target_shape = targets.shape
             
 
             # Forward pass
+            
             outputs = model(inputs)
             
             # Resize outputs to match target dimensions
@@ -118,6 +152,13 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None):
                 mode='bilinear',
                 align_corners=True
             )
+            
+            if mask_indicator:
+                outputs = outputs * mask
+            
+            if log_input:
+                outputs = denormalize_log_prediction(outputs)
+                targets = denormalize_log_prediction(targets)
             
             # Calculate metrics
             abs_diff = torch.abs(outputs - targets)
@@ -201,14 +242,26 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None):
             torch.cuda.empty_cache()
     
     # Calculate final metrics using stored target shape
-    total_pixels = target_shape[1] * target_shape[2] * target_shape[3]  # channels * height * width
-    mae /= total_samples * total_pixels
-    rmse = np.sqrt(rmse / (total_samples * total_pixels))
-    rel /= total_samples * total_pixels
-    sirmse = sirmse / total_samples
-    delta1 /= total_samples * total_pixels
-    delta2 /= total_samples * total_pixels
-    delta3 /= total_samples * total_pixels
+    
+    if mask_indicator:
+        
+        mae /= valid_pixels
+        rmse = np.sqrt(rmse / valid_pixels)
+        rel /= valid_pixels
+        sirmse = sirmse / total_samples
+        delta1 /= valid_pixels
+        delta2 /= valid_pixels
+        delta3 /= valid_pixels
+        
+    else:
+        total_pixels = target_shape[1] * target_shape[2] * target_shape[3]  # channels * height * width
+        mae /= total_samples * total_pixels
+        rmse = np.sqrt(rmse / (total_samples * total_pixels))
+        rel /= total_samples * total_pixels
+        sirmse = sirmse / total_samples
+        delta1 /= total_samples * total_pixels
+        delta2 /= total_samples * total_pixels
+        delta3 /= total_samples * total_pixels
     
     metrics = {
         'MAE': mae,
@@ -225,13 +278,13 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None):
 
     return metrics
 
-def generate_test_predictions(model, test_loader, device):
+def generate_test_predictions(model, test_loader, device, exp_path, log_input=False):
     """Generate predictions for the test set without ground truth"""
     model.eval()
     
-    # Ensure predictions directory exists
-    ensure_dir(predictions_dir)
-    
+    # # Ensure predictions directory exists
+    # ensure_dir(predictions_dir)
+    os.makedirs(os.path.join(exp_path, "results"), exist_ok=True)
     with torch.no_grad():
         for inputs, filenames in tqdm(test_loader, desc="Generating Test Predictions"):
             inputs = inputs.to(device)
@@ -248,6 +301,9 @@ def generate_test_predictions(model, test_loader, device):
                 align_corners=True
             )
             
+            if log_input:
+                outputs = denormalize_log_prediction(outputs)
+            
             # Save all test predictions
             for i in range(batch_size):
                 # Get filename without extension
@@ -255,7 +311,7 @@ def generate_test_predictions(model, test_loader, device):
                 
                 # Save depth map prediction as numpy array
                 depth_pred = outputs[i].cpu().squeeze().numpy()
-                np.save(os.path.join(predictions_dir, f"{filename}"), depth_pred)
+                np.save(os.path.join(os.path.join(exp_path, "results"), f"{filename}"), depth_pred)
             
             # Clean up memory
             del inputs, outputs
@@ -263,3 +319,61 @@ def generate_test_predictions(model, test_loader, device):
         # Clear cache after test predictions
         torch.cuda.empty_cache()
 
+def visualize_test_predictions(model, test_loader, device, exp_path, log_input=True):
+    """Evaluate the model and compute metrics on validation set"""
+    model.eval()
+    
+    os.makedirs(os.path.join(exp_path, "result_viz"), exist_ok=True)
+    
+    cnt = 0
+    with torch.no_grad():
+        for inputs, filenames in tqdm(test_loader, desc="Visualizing"):
+            inputs = inputs.to(device)
+            batch_size = inputs.size(0)
+
+            # Forward pass
+            outputs = model(inputs)
+            
+            # Resize outputs to match target dimensions
+            outputs = nn.functional.interpolate(
+                outputs,
+                size=(426, 560),  # Original input dimensions
+                mode='bilinear',
+                align_corners=True
+            )
+            
+            if log_input:
+                outputs = denormalize_log_prediction(outputs)
+            
+            for i in range(len(inputs)):
+
+                # Convert tensors to numpy arrays
+                input_np = inputs[i].cpu().permute(1, 2, 0).numpy()
+                output_np = outputs[i].cpu().squeeze().numpy()
+
+                # Normalize for visualization
+                input_np = (input_np - input_np.min()) / (input_np.max() - input_np.min() + 1e-6)
+
+                # Create visualization
+                plt.figure(figsize=(15, 5))
+
+                plt.subplot(1, 2, 1)
+                plt.imshow(input_np)
+                plt.title("RGB Input")
+                plt.axis('off')
+
+                # plt.subplot(1, 3, 2)
+                # plt.imshow(target_np, cmap='plasma')
+                # plt.title("Ground Truth Depth")
+                # plt.axis('off')
+
+                plt.subplot(1, 2, 2)
+                plt.imshow(output_np, cmap='plasma')
+                plt.title("Predicted Depth")
+                plt.axis('off')
+
+                plt.tight_layout()
+                plt.savefig(os.path.join(os.path.join(exp_path, "result_viz"), f"sample_{cnt}.png"))
+                plt.close()
+                
+                cnt += 1
