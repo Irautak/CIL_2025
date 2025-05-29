@@ -31,7 +31,10 @@ class CombDepthDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         try:
-            rgb_path = os.path.join(self.data_dir, self.file_pairs[idx][0])
+            if self.has_gt:
+                rgb_path = os.path.join(self.data_dir, self.file_pairs[idx][0])
+            else:
+                rgb_path = os.path.join(self.data_dir, self.file_list[idx].split(' ')[0])
             # original RGB image
             rgb = Image.open(rgb_path).convert('RGB')
             #rgb = torch.from_numpy(rgb).permute(2, 0, 1)  # [H, W, C] → [C, H, W]
@@ -42,7 +45,10 @@ class CombDepthDataset(torch.utils.data.Dataset):
             for model in self.depth_model_names:
                 base_name = os.path.basename(rgb_path)
                 idx_part = base_name.split('_')[1]
-                depth_path = os.path.join(self.depths_dir, model, f"sample_{idx_part}_depth.npy")
+                if self.has_gt:
+                    depth_path = os.path.join(self.depths_dir, model, f"sample_{idx_part}_depth.npy")
+                else:
+                    depth_path = os.path.join(self.depths_dir, model, f"test_{idx_part}_depth.npy")
 
                 depth_map = np.load(depth_path).astype(np.float32) # Numpy arr: (H, W)
                 # Make sure it's 2D: (H, W), some models generated a different shape numpy array

@@ -38,7 +38,7 @@ random_seed = 42
 val_part: float = 0.15
 
 # model init
-model_params = dict(decoder_channels=[320, 160, 80, 40])
+model_params = dict(decoder_channels=[512, 256, 128, 64])
 model = lambda : unet_convnextv2.Unet(**model_params).to(device)
 
 optimizer_params = dict(lr=1e-4,

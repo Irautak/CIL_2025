@@ -498,7 +498,7 @@ def generate_test_predictions(model, test_loader, device, exp_path, is_exntended
         # Clear cache after test predictions
         torch.cuda.empty_cache()
 
-def visualize_test_predictions(model, test_loader, device, exp_path):
+def visualize_test_predictions(model, test_loader, device, exp_path, is_exntended_model=False):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
     
@@ -506,50 +506,100 @@ def visualize_test_predictions(model, test_loader, device, exp_path):
     
     cnt = 0
     with torch.no_grad():
-        for inputs, filenames in tqdm(test_loader, desc="Visualizing"):
-            inputs = inputs.to(device)
-            batch_size = inputs.size(0)
-
-            # Forward pass
-            outputs = model(inputs)
-            
-            # Resize outputs to match target dimensions
-            outputs = nn.functional.interpolate(
-                outputs,
-                size=(426, 560),  # Original input dimensions
-                mode='bilinear',
-                align_corners=True
-            )
-            
-            for i in range(len(inputs)):
-
-                # Convert tensors to numpy arrays
-                input_np = inputs[i].cpu().permute(1, 2, 0).numpy()
-                output_np = outputs[i].cpu().squeeze().numpy()
-
-                # Normalize for visualization
-                input_np = (input_np - input_np.min()) / (input_np.max() - input_np.min() + 1e-6)
-
-                # Create visualization
-                plt.figure(figsize=(15, 5))
-
-                plt.subplot(1, 2, 1)
-                plt.imshow(input_np)
-                plt.title("RGB Input")
-                plt.axis('off')
-
-                # plt.subplot(1, 3, 2)
-                # plt.imshow(target_np, cmap='plasma')
-                # plt.title("Ground Truth Depth")
-                # plt.axis('off')
-
-                plt.subplot(1, 2, 2)
-                plt.imshow(output_np, cmap='plasma')
-                plt.title("Predicted Depth")
-                plt.axis('off')
-
-                plt.tight_layout()
-                plt.savefig(os.path.join(os.path.join(exp_path, "result_viz"), f"sample_{cnt}.png"))
-                plt.close()
+        if is_exntended_model:
+            for rgbs, stacked_depth_maps, filenames, uncertainty_maps in tqdm(test_loader, desc="Generating Test Predictions"):
+                rgbs = rgbs.to(device)
+                stacked_depth_maps =stacked_depth_maps.to(device)
+                uncertainty_maps = uncertainty_maps.to(device) if uncertainty_maps is not None else None
+                batch_size = rgbs.size(0)
                 
-                cnt += 1
+                # Forward pass
+                outputs = model(rgbs, stacked_depth_maps, uncertainty_maps)
+                # Resize outputs to match target dimensions
+                outputs = nn.functional.interpolate(
+                    outputs,
+                    size=(426, 560),  # Original input dimensions
+                    mode='bilinear',
+                    align_corners=True
+                )
+                
+                for i in range(len(rgbs)):
+    
+                    # Convert tensors to numpy arrays
+                    input_np = rgbs[i].cpu().permute(1, 2, 0).numpy()
+                    output_np = outputs[i].cpu().squeeze().numpy()
+    
+                    # Normalize for visualization
+                    input_np = (input_np - input_np.min()) / (input_np.max() - input_np.min() + 1e-6)
+    
+                    # Create visualization
+                    plt.figure(figsize=(15, 5))
+    
+                    plt.subplot(1, 2, 1)
+                    plt.imshow(input_np)
+                    plt.title("RGB Input")
+                    plt.axis('off')
+    
+                    # plt.subplot(1, 3, 2)
+                    # plt.imshow(target_np, cmap='plasma')
+                    # plt.title("Ground Truth Depth")
+                    # plt.axis('off')
+    
+                    plt.subplot(1, 2, 2)
+                    plt.imshow(output_np, cmap='plasma')
+                    plt.title("Predicted Depth")
+                    plt.axis('off')
+    
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(os.path.join(exp_path, "result_viz"), f"sample_{cnt}.png"))
+                    plt.close()
+                    
+                    cnt += 1
+        else:
+            for inputs, filenames in tqdm(test_loader, desc="Visualizing"):
+                inputs = inputs.to(device)
+                batch_size = inputs.size(0)
+    
+                # Forward pass
+                outputs = model(inputs)
+                
+                # Resize outputs to match target dimensions
+                outputs = nn.functional.interpolate(
+                    outputs,
+                    size=(426, 560),  # Original input dimensions
+                    mode='bilinear',
+                    align_corners=True
+                )
+                
+                for i in range(len(inputs)):
+    
+                    # Convert tensors to numpy arrays
+                    input_np = inputs[i].cpu().permute(1, 2, 0).numpy()
+                    output_np = outputs[i].cpu().squeeze().numpy()
+    
+                    # Normalize for visualization
+                    input_np = (input_np - input_np.min()) / (input_np.max() - input_np.min() + 1e-6)
+    
+                    # Create visualization
+                    plt.figure(figsize=(15, 5))
+    
+                    plt.subplot(1, 2, 1)
+                    plt.imshow(input_np)
+                    plt.title("RGB Input")
+                    plt.axis('off')
+    
+                    # plt.subplot(1, 3, 2)
+                    # plt.imshow(target_np, cmap='plasma')
+                    # plt.title("Ground Truth Depth")
+                    # plt.axis('off')
+    
+                    plt.subplot(1, 2, 2)
+                    plt.imshow(output_np, cmap='plasma')
+                    plt.title("Predicted Depth")
+                    plt.axis('off')
+    
+                    plt.tight_layout()
+                    plt.savefig(os.path.join(os.path.join(exp_path, "result_viz"), f"sample_{cnt}.png"))
+                    plt.close()
+                    
+                    cnt += 1
