@@ -1,5 +1,5 @@
 from utils import utils
-from models import unet_convnextv2, example_unet
+from models import unet_convnextv2
 #import albumentations as A
 from torchvision import transforms as transforms
 from pathlib import Path
@@ -17,7 +17,7 @@ sys.path.append(str(root))
 
 
 # What you want to do
-WANDB_NOTES = 'test_ConvNext'
+WANDB_NOTES = 'ConvNextV2
 
 dataset_path = "/home/v.lomtev/CIL/data"
 
@@ -102,7 +102,7 @@ class ScaleInvariantLoss(nn.Module):
 
 class MSGIL_NORM_Loss(nn.Module):
     """
-    Our proposed GT normalized Multi-scale Gradient Loss Fuction.
+    Normalized Multi-scale Gradient Loss Fuction.
     """
     def __init__(self, scale=4, valid_threshold=1e-6):
         super().__init__()
@@ -158,9 +158,9 @@ class Combined_Loss(nn.Module):
         return 0.5*self.scale_inv_loss(pred, gt) + 0.5*self.gradient_loss(pred, gt)
 
 
-#loss = nn.MSELoss(**loss_params)
-#loss = ScaleInvariantLoss(**loss_params) ## works better
-loss = Combined_Loss(**loss_params)
+#loss = nn.MSELoss(**loss_params) ## Just MSE Loss
+#loss = ScaleInvariantLoss(**loss_params) ## Just Scale invariant loss
+loss = Combined_Loss(**loss_params)  # SIL + GL
 additional_params = dict()
 # Augmentation initing
 
@@ -169,7 +169,6 @@ transform_train = transforms.Compose([
     transforms.Resize(img_size),
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
                   hue=0.1),  # Data augmentation
-    #transforms.RandomInvert(),
     transforms.RandomHorizontalFlip(),
     transforms.RandomVerticalFlip(),
     transforms.Pad([8, 11, 8, 11]),
@@ -181,7 +180,6 @@ transform_train = transforms.Compose([
 
 
 transform_val = transforms.Compose([
-    # A.CenterCrop(width=window_size, height=window_size,p=1),
     transforms.Resize(img_size),
     transforms.Pad([8, 11, 8, 11]),
     transforms.ToTensor(), # HWC -> CHW
