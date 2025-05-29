@@ -1,7 +1,7 @@
 from utils import utils
-from models import unet_convnextv2, example_unet
-#import albumentations as A
-from torchvision import transforms as transforms
+from models import dpt
+import albumentations as A
+#from torchvision import transforms as transforms
 from pathlib import Path
 from albumentations.pytorch import ToTensorV2
 from copy import deepcopy
@@ -18,7 +18,7 @@ sys.path.append(str(root))
 
 
 # What you want to do
-WANDB_NOTES = 'test_ConvNext'
+WANDB_NOTES = 'DPT_augs'
 
 dataset_path = "/home/v.lomtev/CIL/CIL_2025/data"
 
@@ -28,30 +28,25 @@ img_size = (426, 560)
 
 epochs: int = 50
 
-train_bs: int = 8 #16
+train_bs: int = 8
 num_workers: int = 16
 
-val_bs: int = 8
+val_bs: int = 16
 device = 'cuda:0'  # You need to change it for your GPU
 
 random_seed: int = 42
 
 val_part: float = 0.05
-# model architecture configs
-# model_type = 'BaseUnet'
-# optimizer = 'AdamW'
-# loss_function = 'ce_dice_bceweighted'
 
 # model init
-model_params = dict(decoder_channels=[512, 256, 128, 64])#[384, 192, 96, 48]
-model = lambda : unet_convnextv2.Unet(**model_params).to(device)
+model_params = dict(decoder_channels=[512, 256, 128, 64])
+model = lambda : dpt.DPT(**model_params).to(device)
 
-optimizer_params = dict(lr=1e-4,
+optimizer_params = dict(lr=1e-4,#1e-4,
                         weight_decay=1e-4)  # Learning rate and weight decay
 optimizer = lambda x: torch.optim.AdamW(x, **optimizer_params)
 
 loss_params = dict()
-
 class ScaleInvariantLoss(nn.Module):
     """
     Scale-invariant loss for depth estimation.
@@ -178,31 +173,67 @@ loss = Combined_Loss(**loss_params)
 additional_params = dict()
 # Augmentation initing
 
-transform_train = transforms.Compose([
-
-    transforms.Resize(img_size),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
-                  hue=0.1),  # Data augmentation
-    #transforms.RandomInvert(),
-    #transforms.Pad([8, 11, 8, 11]),
-    transforms.Pad([0, 67, 0, 67]),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
+additional_params["MASK_INDICATOR"] = -1.0
+    
+transform_train = A.Compose([
+    
+    # ----- Color, Blur, Contrast (only image) -----
+    A.HueSaturationValue(
+            hue_shift_limit=(-20, 20),
+            sat_shift_limit=(-30, 30),
+            val_shift_limit=(-20, 20),
+            p=0.9
+        ),
+    A.OneOf([
+            A.GaussianBlur(blur_limit=(3, 11)),
+            A.Blur(blur_limit=(3, 7)),
+        ], p=0.9),
+    A.RandomBrightnessContrast(
+            brightness_limit=0.3,
+            contrast_limit=(-0.25, 0.15),
+            p=0.9,
+        ),
+    
+    # ----- Geometric (shared) -----
+        
+    A.HorizontalFlip(p=0.5),
+    A.VerticalFlip(p=0.5),
+    A.ShiftScaleRotate(
+        shift_limit= 0.0825,
+        scale_limit=0.0, #0.1
+        rotate_limit=8,
+        border_mode=cv2.BORDER_CONSTANT,
+        fill_mask=additional_params["MASK_INDICATOR"],
+        p=0.8
+    ),
+    
+    # ----- Noise (only image) ------
+    A.OneOf([
+            A.ISONoise(color_shift=(0.01, 0.05), intensity=(0.1, 0.3), p=1),
+            A.MultiplicativeNoise(elementwise=True, multiplier=(0.9, 1.1), p=1),
+            A.GaussNoise(std_range=(.10, .25), p=1),
+        ], p=0.9),
+    A.FancyPCA(alpha=0.2, p=0.9),
+    
+    # ----- Shape preprocessing and normalization -----
+    A.Pad([0, 67, 0, 67]),
+    #A.Resize(384, 384),
+    #A.ToFloat(),
+    A.Normalize(mean=[0.485, 0.456, 0.406], std=[
                 0.229, 0.224, 0.225]),  # 0, 255 -> 0, 1
-      # HWC -> CHW
-    transforms.Resize((384, 384))
+    A.ToTensorV2()  # HWC -> CHW
 ])
 
 
-transform_val = transforms.Compose([
-    # A.CenterCrop(width=window_size, height=window_size,p=1),
-    transforms.Resize(img_size),
-    #transforms.Pad([8, 11, 8, 11]),
-    transforms.Pad([0, 67, 0, 67]),
-    transforms.ToTensor(), # HWC -> CHW
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
-                0.229, 0.224, 0.225]),  # 0, 255 -> 0, 1  
-    transforms.Resize((384, 384))
+transform_val = A.Compose([
+
+    A.Resize(img_size[0], img_size[1]),
+    A.Pad([0, 67, 0, 67]),
+    #A.Resize(384, 384),
+    #A.ToFloat(),
+    A.Normalize(mean=[0.485, 0.456, 0.406], std=[
+                0.229, 0.224, 0.225]),  # 0, 255 -> 0, 1
+    A.ToTensorV2()  # HWC -> CHW
 ])
 
 def target_transform(depth, min_depth=0.001, max_depth=10.0):

@@ -5,9 +5,7 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 
-def denormalize_log_prediction(log_depth, min_depth=0.001, max_depth=10.0):
-    # Convert from normalized [0,1] back to log space
-    #log_depth = normalized_depth * (np.log(max_depth) - np.log(min_depth)) + np.log(min_depth)
+def denormalize_log_prediction(log_depth):
     
     # Convert from log space back to linear depth in meters
     depth_map = torch.exp(log_depth)
@@ -22,7 +20,7 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
     train_losses = []
     val_losses = []
     if mask_indicator is not None and log_input:
-        mask_indicator = -1e20
+        mask_indicator = -1e20 # We simply want the mask indicator to be out of bounds for any adequate data points we have
     for epoch in range(num_epochs):
         print(f"Epoch {epoch+1}/{num_epochs}")
         
