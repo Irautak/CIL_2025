@@ -1,5 +1,5 @@
 from utils import utils
-from models import unet_convnextv2, example_unet
+from models import unet_mit
 #import albumentations as A
 from torchvision import transforms as transforms
 from pathlib import Path
@@ -37,13 +37,9 @@ device = 'cuda:3'  # You need to change it for your GPU
 random_seed: int = 42
 
 val_part: float = 0.15
-# model architecture configs
-# model_type = 'BaseUnet'
-# optimizer = 'AdamW'
-# loss_function = 'ce_dice_bceweighted'
 
 # model init
-model_params = dict(decoder_channels=[512, 256, 128, 64])#[384, 192, 96, 48]
+model_params = dict(decoder_channels=[512, 256, 128, 64])
 model = lambda : unet_convnextv2.Unet(**model_params).to(device)
 
 optimizer_params = dict(lr=1e-4,
@@ -172,8 +168,6 @@ class Combined_Loss(nn.Module):
         return 0.5*self.scale_inv_loss(pred, gt) + 0.5*self.gradient_loss(pred, gt)
 
 
-#loss = nn.MSELoss(**loss_params)
-#loss = ScaleInvariantLoss(**loss_params) ## works better
 loss = Combined_Loss(**loss_params)
 additional_params = dict()
 # Augmentation initing
@@ -183,7 +177,6 @@ transform_train = transforms.Compose([
     transforms.Resize(img_size),
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
                   hue=0.1),  # Data augmentation
-    #transforms.RandomInvert(),
     transforms.Pad([8, 11, 8, 11]),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
@@ -193,7 +186,6 @@ transform_train = transforms.Compose([
 
 
 transform_val = transforms.Compose([
-    # A.CenterCrop(width=window_size, height=window_size,p=1),
     transforms.Resize(img_size),
     transforms.Pad([8, 11, 8, 11]),
     transforms.ToTensor(), # HWC -> CHW
