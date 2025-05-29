@@ -225,13 +225,13 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None):
 
     return metrics
 
-def generate_test_predictions(model, test_loader, device):
+def generate_test_predictions(model, test_loader, device, exp_path):
     """Generate predictions for the test set without ground truth"""
     model.eval()
     
-    # Ensure predictions directory exists
-    ensure_dir(predictions_dir)
-    
+    # # Ensure predictions directory exists
+    # ensure_dir(predictions_dir)
+    os.makedirs(os.path.join(exp_path, "results"), exist_ok=True)
     with torch.no_grad():
         for inputs, filenames in tqdm(test_loader, desc="Generating Test Predictions"):
             inputs = inputs.to(device)
@@ -255,7 +255,7 @@ def generate_test_predictions(model, test_loader, device):
                 
                 # Save depth map prediction as numpy array
                 depth_pred = outputs[i].cpu().squeeze().numpy()
-                np.save(os.path.join(predictions_dir, f"{filename}"), depth_pred)
+                np.save(os.path.join(os.path.join(exp_path, "results"), f"{filename}"), depth_pred)
             
             # Clean up memory
             del inputs, outputs

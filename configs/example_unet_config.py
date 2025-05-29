@@ -1,5 +1,5 @@
 from utils import utils
-from models import unet_convnextv2, example_unet
+from models import example_unet
 #import albumentations as A
 from torchvision import transforms as transforms
 from pathlib import Path
@@ -19,21 +19,21 @@ sys.path.append(str(root))
 # What you want to do
 WANDB_NOTES = 'test_example'
 
-dataset_path = "/home/v.lomtev/CIL/data"
+dataset_path = "/home/v.lomtev/CIL/CIL_2025/data"
 
 
 # train parameters
 img_size = (426, 560)
 
-epochs: int = 1
+epochs: int = 40
 
-train_bs: int = 4
-num_workers: int = 4
+train_bs: int = 16
+num_workers: int = 16
 
-val_bs: int = 4
-device = 'cuda:3'  # You need to change it for your GPU
+val_bs: int = 16
+device = 'cuda:0'  # You need to change it for your GPU
 
-random_seed: int = 0
+random_seed: int = 42
 
 val_part: float = 0.15
 
