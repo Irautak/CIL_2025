@@ -62,8 +62,12 @@ class CombDepthDataset(torch.utils.data.Dataset):
 
             # Get uncertainty map 
             if self.use_uncertainty:
-                unc_map_path = os.path.join(self.uncertainty_dir, f"uncertainty_{idx_part}.npy")
-                uncertainty_map = torch.from_numpy(np.load(unc_map_path).astype(np.float32)).unsqueeze(0)
+                try:
+                    unc_map_path = os.path.join(self.uncertainty_dir, f"train_{idx_part}_depth_uncertainty.npy")
+                    uncertainty_map = torch.from_numpy(np.load(unc_map_path).astype(np.float32)).unsqueeze(0)
+                except:
+                    unc_map_path = os.path.join(self.uncertainty_dir, f"test_{idx_part}_depth_uncertainty.npy")
+                    uncertainty_map = torch.from_numpy(np.load(unc_map_path).astype(np.float32)).unsqueeze(0)
             else:
                 # uncertainty_map = None    =>    Caused issues
                 uncertainty_map = torch.zeros_like(stacked_depth_maps[0]).unsqueeze(0) 

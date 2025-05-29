@@ -1,5 +1,5 @@
 from utils import utils
-from models import unet_convnextv2, example_unet
+from models import unet_mit
 #import albumentations as A
 from torchvision import transforms as transforms
 from pathlib import Path
@@ -10,6 +10,7 @@ import os
 import cv2
 import torch
 import torch.nn as nn
+import numpy as np
 import torch.nn.functional as F
 
 file = Path(__file__).resolve()
@@ -17,7 +18,9 @@ parent, root = file.parent, file.parents[1]
 sys.path.append(str(root))
 
 
-WANDB_NOTES = 'test_comb_model'
+# What you want to do
+WANDB_NOTES = 'train_ExtendedUnetwSotaDepths'
+
 # File paths and directory names
 dataset_path = "/home/v.lomtev/CIL/CIL_2025/data/"
 depth_maps_path = "/home/v.lomtev/CIL/CIL_2025/data/TrainDepthMaps/"
@@ -26,20 +29,21 @@ depth_model_names = ["DepthAnythingV2", "ZoeDepth", "DistillAnyDepth", "UniDepth
 
 # Train parameters
 img_size = (426, 560)
-epochs: int = 70
-train_bs: int = 16 
-num_workers: int = 8
+epochs: int = 50
+train_bs: int = 8
+num_workers: int = 16
 val_bs: int = 16
-device = 'cuda:2'  
+device = 'cuda:3'  
+#device = 'cpu'
 
 random_seed: int = 42
-random_seed = 42
 
 val_part: float = 0.15
 
-# model init
-model_params = dict(decoder_channels=[512, 256, 128, 64])
-model = lambda : unet_convnextv2.Unet(**model_params).to(device)
+
+#model_params = dict(decoder_channels=[512, 256, 128, 64])#[384, 192, 96, 48]
+model_params = dict(decoder_channels=[512, 256, 128, 64], num_features_included=1, uncertainty_included=False)#[384, 192, 96, 48]
+model = lambda : unet_mit.Unet(**model_params).to(device)
 
 optimizer_params = dict(lr=1e-4,
                         weight_decay=1e-4)  # Learning rate and weight decay
@@ -63,10 +67,14 @@ class ScaleInvariantLoss(nn.Module):
     - lambda is a regularization term (default: 0.5)
     """
     
-    def __init__(self, lambda_reg=0.5, valid_threshold=1e-6):
+    def __init__(self, lambda_reg=0.5, valid_threshold=1e-6, log_input=False):
         super().__init__()
         self.lambda_reg = lambda_reg
-        self.valid_threshold = valid_threshold
+        self.log_input = log_input
+        if self.log_input:
+            self.valid_threshold = np.log(valid_threshold)
+        else:
+            self.valid_threshold = valid_threshold
         
     def forward(self, pred, gt):
         """
@@ -80,11 +88,14 @@ class ScaleInvariantLoss(nn.Module):
         """
         # Ensure inputs are positive
         mask = gt > self.valid_threshold
-        pred = torch.clamp(pred, min=1e-6)
-        gt = torch.clamp(gt, min=1e-6)
+        pred = torch.clamp(pred, min=self.valid_threshold)
+        gt = torch.clamp(gt, min=self.valid_threshold)
         
         # Compute log difference
-        log_diff = torch.log(pred) - torch.log(gt)
+        if self.log_input:
+            log_diff = pred - gt
+        else:
+            log_diff = torch.log(pred) - torch.log(gt)
         log_diff = log_diff * mask
         n_valid = torch.sum(mask)
             
@@ -100,10 +111,14 @@ class MSGIL_NORM_Loss(nn.Module):
     """
     Our proposed GT normalized Multi-scale Gradient Loss Fuction.
     """
-    def __init__(self, scale=4, valid_threshold=1e-6):
+    def __init__(self, scale=4, valid_threshold=1e-6, log_input=False):
         super().__init__()
         self.scales_num = scale
-        self.valid_threshold = valid_threshold
+        self.log_input = log_input
+        if self.log_input:
+            self.valid_threshold = np.log(valid_threshold)
+        else:
+            self.valid_threshold = valid_threshold
         self.EPSILON = 1e-8
 
     def one_scale_gradient_loss(self, pred_scale, gt, mask):
@@ -128,15 +143,17 @@ class MSGIL_NORM_Loss(nn.Module):
 
     def forward(self, pred, gt):
         mask = gt > self.valid_threshold
-        pred = torch.clamp(pred, min=1e-6)
-        gt = torch.clamp(gt, min=1e-6)
+        pred = torch.clamp(pred, min=self.valid_threshold)
+        gt = torch.clamp(gt, min=self.valid_threshold)
         
         grad_term = 0.0
-        #gt_mean = minmax_meanstd[:, 2]
-        #gt_std = minmax_meanstd[:, 3]
-        #gt_trans = (gt - gt_mean[:, None, None, None]) / (gt_std[:, None, None, None] + 1e-8)
-        log_pred = torch.log(pred)
-        log_gt = torch.log(gt)
+        
+        if not self.log_input:
+            log_pred = torch.log(pred)
+            log_gt = torch.log(gt)
+        else:
+            log_pred = pred
+            log_gt = gt
         
         for i in range(self.scales_num):
             d_gt = log_gt[:, :, ::2**i, ::2**i]
@@ -146,10 +163,10 @@ class MSGIL_NORM_Loss(nn.Module):
         return grad_term
     
 class Combined_Loss(nn.Module):
-    def __init__(self, lambda_reg=0.5, scale=4, valid_threshold=1e-6):
+    def __init__(self, lambda_reg=0.5, scale=4, valid_threshold=1e-6, log_input=True):
         super().__init__()
-        self.scale_inv_loss = ScaleInvariantLoss(lambda_reg, valid_threshold)
-        self.gradient_loss = MSGIL_NORM_Loss(scale, valid_threshold)
+        self.scale_inv_loss = ScaleInvariantLoss(lambda_reg, valid_threshold, log_input)
+        self.gradient_loss = MSGIL_NORM_Loss(scale, valid_threshold, log_input)
     def forward(self, pred, gt):
         return 0.5*self.scale_inv_loss(pred, gt) + 0.5*self.gradient_loss(pred, gt)
 
@@ -166,8 +183,6 @@ transform_train = transforms.Compose([
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
                   hue=0.1),  # Data augmentation
     #transforms.RandomInvert(),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomVerticalFlip(),
     transforms.Pad([8, 11, 8, 11]),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
@@ -185,6 +200,23 @@ transform_val = transforms.Compose([
                 0.229, 0.224, 0.225]),  # 0, 255 -> 0, 1  
 ])
 
+def target_transform(depth, min_depth=0.001, max_depth=10.0):
+    # Resize the depth map to match input size
+    depth = torch.nn.functional.interpolate(
+        depth.unsqueeze(0).unsqueeze(0),
+        size=img_size,
+        mode='bilinear',
+        align_corners=True
+    ).squeeze()
+    depth = torch.clamp(depth, min_depth, max_depth)
+    
+    log_depth = torch.log(depth)
+    #normalized_depth = (log_depth - np.log(min_depth)) / (np.log(max_depth) - np.log(min_depth))
+    
+    # Add channel dimension to match model output
+    log_depth = log_depth.unsqueeze(0)
+    
+    return log_depth
 
 class PadToDivisible:
     def __init__(self, divisor=32, mode='constant', value=0):
@@ -244,4 +276,3 @@ def target_transform(depth):
     # Add channel dimension to match model output
     depth = depth.unsqueeze(0)
     return depth
-

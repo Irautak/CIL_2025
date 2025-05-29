@@ -5,9 +5,6 @@ import torch
 import segmentation_models_pytorch as smp
 import torch.nn as nn
 from pytorch_model_summary import summary
-from models import convnextv2_utils
-from segmentation_models_pytorch import encoders
-encoders.encoders.update(convnextv2_utils.convnextv2_encoders)
 
 class Unet(torch.nn.Module):
     def __init__(self, decoder_channels=[256, 128, 64, 32, 16], num_features_included=1, uncertainty_included=False):

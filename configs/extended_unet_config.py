@@ -1,5 +1,5 @@
 from utils import utils
-from models import unet_convnextv2, example_unet
+from models import unet_mit
 #import albumentations as A
 from torchvision import transforms as transforms
 from pathlib import Path
@@ -33,7 +33,7 @@ epochs: int = 50
 train_bs: int = 8
 num_workers: int = 16
 val_bs: int = 16
-device = 'cuda:3'  
+device = 'cuda:0'  
 #device = 'cpu'
 
 random_seed: int = 42
@@ -42,8 +42,8 @@ val_part: float = 0.15
 
 
 #model_params = dict(decoder_channels=[512, 256, 128, 64])#[384, 192, 96, 48]
-model_params = dict(decoder_channels=[512, 256, 128, 64], num_features_included=4, uncertainty_included=False)#[384, 192, 96, 48]
-model = lambda : unet_convnextv2.Unet(**model_params).to(device)
+model_params = dict(decoder_channels=[512, 256, 128, 64], num_features_included=4, uncertainty_included=True)#[384, 192, 96, 48]
+model = lambda : unet_mit.Unet(**model_params).to(device)
 
 optimizer_params = dict(lr=1e-4,
                         weight_decay=1e-4)  # Learning rate and weight decay

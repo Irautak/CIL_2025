@@ -263,7 +263,7 @@ def save_logs(mae, rmse, rel, sirmse, delta1, delta2, delta3, valid_pixels, epoc
 
 
 def evaluate_model(model, val_loader, device, exp_path, epoch = None,
-                  mask_indicator=None):
+                  mask_indicator=None, is_extended_model=False,):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
     
