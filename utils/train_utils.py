@@ -1,33 +1,37 @@
-import torch, os
+import torch
+import os
 import wandb
 from tqdm import tqdm
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def denormalize_log_prediction(log_depth):
-    
+
     # Convert from log space back to linear depth in meters
     depth_map = torch.exp(log_depth)
-    
+
     return depth_map
 
+
 def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epochs, device, exp_path,
-               mask_indicator=None, log_input=False):
+                mask_indicator=None, log_input=False):
     """Train the model and save the best based on validation metrics"""
     best_val_loss = float('inf')
     best_epoch = 0
     train_losses = []
     val_losses = []
     if mask_indicator is not None and log_input:
-        mask_indicator = -1e20 # We simply want the mask indicator to be out of bounds for any adequate data points we have
+        # We simply want the mask indicator to be out of bounds for any adequate data points we have
+        mask_indicator = -1e20
     for epoch in range(num_epochs):
         print(f"Epoch {epoch+1}/{num_epochs}")
-        
+
         # Training phase
         model.train()
         train_loss = 0.0
-        
+
         for inputs, targets, _ in tqdm(train_loader, desc="Training"):
             inputs, targets = inputs.to(device), targets.to(device)
             # Zero the gradients
@@ -36,31 +40,31 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
                 with torch.no_grad():
                     mask = (targets != mask_indicator)
                     masked_targets = targets * mask
-            
+
             # Forward pass
             outputs = model(inputs)
-            
+
             if mask_indicator:
                 outputs = outputs * mask
-                loss = (mask.numel()/max(mask.numel()//2, mask.sum())) * loss_func(outputs,
+                loss = (mask.numel()/max(mask.numel()//2, mask.sum())) * loss_func(inputs, outputs,
                                                                                    masked_targets)
-                #print(mask.sum(), mask.numel(), torch.min(masked_targets))
-                #print(loss)
-            else: loss = loss_func(outputs, targets)
+                # print(mask.sum(), mask.numel(), torch.min(masked_targets))
+                # print(loss)
+            else:
+                loss = loss_func(inputs, outputs, targets)
             # Backward pass and optimize
             loss.backward()
             optimizer.step()
-            
+
             train_loss += loss.item() * inputs.size(0)
-        
-        
+
         train_loss /= len(train_loader.dataset)
         train_losses.append(train_loss)
-        
+
         # Validation phase
         model.eval()
         val_loss = 0.0
-        
+
         with torch.no_grad():
             for inputs, targets, _ in tqdm(val_loader, desc="Validation"):
                 inputs, targets = inputs.to(device), targets.to(device)
@@ -69,30 +73,30 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
                     masked_targets = targets * mask
                 # Forward pass
                 outputs = model(inputs)
-                
+
                 if mask_indicator:
                     outputs = outputs * mask
-                    loss = loss_func(outputs, masked_targets)
-                else: loss = loss_func(outputs, targets)
-                
+                    loss = loss_func(inputs, outputs, masked_targets)
+                else:
+                    loss = loss_func(inputs, outputs, targets)
+
                 val_loss += loss.item() * inputs.size(0)
-        
+
         val_loss /= len(val_loader.dataset)
         val_losses.append(val_loss)
-        
+
         ### I guess I need to add it into the previous loop, but for now it will do ####
         ### Additional metrics logging ####
         evaluate_model(model, val_loader, device, exp_path=None, epoch=epoch,
                        mask_indicator=mask_indicator, log_input=log_input)
-        
+
         print(f"Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
-        
+
         ### LOSS WANDB LOGGING ###
-        
+
         wandb.log({"train/train": train_loss}, epoch)
         wandb.log({"val/val": val_loss}, epoch)
 
-        
         # Save the best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -100,20 +104,23 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
             if not os.path.exists(exp_path):
                 os.makedirs(exp_path)
             torch.save(model.state_dict(), f'{exp_path}/best_model_{epoch}.pt')
-            print(f"New best model saved at epoch {epoch+1} with validation loss: {val_loss:.4f}")
-    
-    print(f"\nBest model was from epoch {best_epoch+1} with validation loss: {best_val_loss:.4f}")
-    
+            print(
+                f"New best model saved at epoch {epoch+1} with validation loss: {val_loss:.4f}")
+
+    print(
+        f"\nBest model was from epoch {best_epoch+1} with validation loss: {best_val_loss:.4f}")
+
     # Load the best model
     model.load_state_dict(torch.load(f'{exp_path}/best_model_{best_epoch}.pt'))
-    
+
     return model
 
-def evaluate_model(model, val_loader, device, exp_path, epoch = None,
-                  mask_indicator=None, log_input=False):
+
+def evaluate_model(model, val_loader, device, exp_path, epoch=None,
+                   mask_indicator=None, log_input=False):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
-    
+
     mae = 0.0
     rmse = 0.0
     rel = 0.0
@@ -121,30 +128,29 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
     delta2 = 0.0
     delta3 = 0.0
     sirmse = 0.0
-    
+
     total_samples = 0
     target_shape = None
-    
+
     valid_pixels = 0
     with torch.no_grad():
         for inputs, targets, filenames in tqdm(val_loader, desc="Evaluating"):
             inputs, targets = inputs.to(device), targets.to(device)
             batch_size = inputs.size(0)
             total_samples += batch_size
-            
+
             if mask_indicator:
                 mask = (targets != mask_indicator)
                 targets = targets * mask
                 valid_pixels += mask.sum().item()
-            
+
             if target_shape is None:
                 target_shape = targets.shape
-            
 
             # Forward pass
-            
+
             outputs = model(inputs)
-            
+
             # Resize outputs to match target dimensions
             outputs = nn.functional.interpolate(
                 outputs,
@@ -152,53 +158,55 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
                 mode='bilinear',
                 align_corners=True
             )
-            
+
             if mask_indicator:
                 outputs = outputs * mask
-            
+
             if log_input:
                 outputs = denormalize_log_prediction(outputs)
                 targets = denormalize_log_prediction(targets)
-            
+
             # Calculate metrics
             abs_diff = torch.abs(outputs - targets)
             mae += torch.sum(abs_diff).item()
             rmse += torch.sum(torch.pow(abs_diff, 2)).item()
             rel += torch.sum(abs_diff / (targets + 1e-6)).item()
-            
+
             # Calculate scale-invariant RMSE for each image in the batch
             for i in range(batch_size):
                 # Convert tensors to numpy arrays
                 pred_np = outputs[i].cpu().squeeze().numpy()
                 target_np = targets[i].cpu().squeeze().numpy()
-                
+
                 EPSILON = 1e-6
-                
+
                 valid_target = target_np > EPSILON
                 if not np.any(valid_target):
                     continue
-                
+
                 target_valid = target_np[valid_target]
                 pred_valid = pred_np[valid_target]
-                
+
                 log_target = np.log(target_valid)
-                
-                pred_valid = np.where(pred_valid > EPSILON, pred_valid, EPSILON)
+
+                pred_valid = np.where(
+                    pred_valid > EPSILON, pred_valid, EPSILON)
                 log_pred = np.log(pred_valid)
-                
+
                 # Calculate scale-invariant error
                 diff = log_pred - log_target
                 diff_mean = np.mean(diff)
-                
+
                 # Calculate RMSE for this image
                 sirmse += np.sqrt(np.mean((diff - diff_mean) ** 2))
-            
+
             # Calculate thresholded accuracy
-            max_ratio = torch.max(outputs / (targets + 1e-6), targets / (outputs + 1e-6))
+            max_ratio = torch.max(outputs / (targets + 1e-6),
+                                  targets / (outputs + 1e-6))
             delta1 += torch.sum(max_ratio < 1.25).item()
             delta2 += torch.sum(max_ratio < 1.25**2).item()
             delta3 += torch.sum(max_ratio < 1.25**3).item()
-            
+
             if epoch is None:
                 # Save some sample predictions
                 if total_samples <= 5 * batch_size:
@@ -211,7 +219,8 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
                         output_np = outputs[i].cpu().squeeze().numpy()
 
                         # Normalize for visualization
-                        input_np = (input_np - input_np.min()) / (input_np.max() - input_np.min() + 1e-6)
+                        input_np = (input_np - input_np.min()) / \
+                            (input_np.max() - input_np.min() + 1e-6)
 
                         # Create visualization
                         plt.figure(figsize=(15, 5))
@@ -232,7 +241,8 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
                         plt.axis('off')
 
                         plt.tight_layout()
-                        plt.savefig(os.path.join(exp_path, f"sample_{idx}.png"))
+                        plt.savefig(os.path.join(
+                            exp_path, f"sample_{idx}.png"))
                         plt.close()
 
                 # Free up memory
@@ -240,11 +250,11 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
         if epoch is None:
             # Clear CUDA cache
             torch.cuda.empty_cache()
-    
+
     # Calculate final metrics using stored target shape
-    
+
     if mask_indicator:
-        
+
         mae /= valid_pixels
         rmse = np.sqrt(rmse / valid_pixels)
         rel /= valid_pixels
@@ -252,9 +262,10 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
         delta1 /= valid_pixels
         delta2 /= valid_pixels
         delta3 /= valid_pixels
-        
+
     else:
-        total_pixels = target_shape[1] * target_shape[2] * target_shape[3]  # channels * height * width
+        # channels * height * width
+        total_pixels = target_shape[1] * target_shape[2] * target_shape[3]
         mae /= total_samples * total_pixels
         rmse = np.sqrt(rmse / (total_samples * total_pixels))
         rel /= total_samples * total_pixels
@@ -262,7 +273,7 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
         delta1 /= total_samples * total_pixels
         delta2 /= total_samples * total_pixels
         delta3 /= total_samples * total_pixels
-    
+
     metrics = {
         'MAE': mae,
         'RMSE': rmse,
@@ -278,10 +289,11 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
 
     return metrics
 
+
 def generate_test_predictions(model, test_loader, device, exp_path, log_input=False):
     """Generate predictions for the test set without ground truth"""
     model.eval()
-    
+
     # # Ensure predictions directory exists
     # ensure_dir(predictions_dir)
     os.makedirs(os.path.join(exp_path, "results"), exist_ok=True)
@@ -289,10 +301,10 @@ def generate_test_predictions(model, test_loader, device, exp_path, log_input=Fa
         for inputs, filenames in tqdm(test_loader, desc="Generating Test Predictions"):
             inputs = inputs.to(device)
             batch_size = inputs.size(0)
-            
+
             # Forward pass
             outputs = model(inputs)
-            
+
             # Resize outputs to match original input dimensions (426x560)
             outputs = nn.functional.interpolate(
                 outputs,
@@ -300,31 +312,33 @@ def generate_test_predictions(model, test_loader, device, exp_path, log_input=Fa
                 mode='bilinear',
                 align_corners=True
             )
-            
+
             if log_input:
                 outputs = denormalize_log_prediction(outputs)
-            
+
             # Save all test predictions
             for i in range(batch_size):
                 # Get filename without extension
                 filename = filenames[i].split(' ')[1]
-                
+
                 # Save depth map prediction as numpy array
                 depth_pred = outputs[i].cpu().squeeze().numpy()
-                np.save(os.path.join(os.path.join(exp_path, "results"), f"{filename}"), depth_pred)
-            
+                np.save(os.path.join(os.path.join(
+                    exp_path, "results"), f"{filename}"), depth_pred)
+
             # Clean up memory
             del inputs, outputs
-        
+
         # Clear cache after test predictions
         torch.cuda.empty_cache()
+
 
 def visualize_test_predictions(model, test_loader, device, exp_path, log_input=True):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
-    
+
     os.makedirs(os.path.join(exp_path, "result_viz"), exist_ok=True)
-    
+
     cnt = 0
     with torch.no_grad():
         for inputs, filenames in tqdm(test_loader, desc="Visualizing"):
@@ -333,7 +347,7 @@ def visualize_test_predictions(model, test_loader, device, exp_path, log_input=T
 
             # Forward pass
             outputs = model(inputs)
-            
+
             # Resize outputs to match target dimensions
             outputs = nn.functional.interpolate(
                 outputs,
@@ -341,10 +355,10 @@ def visualize_test_predictions(model, test_loader, device, exp_path, log_input=T
                 mode='bilinear',
                 align_corners=True
             )
-            
+
             if log_input:
                 outputs = denormalize_log_prediction(outputs)
-            
+
             for i in range(len(inputs)):
 
                 # Convert tensors to numpy arrays
@@ -352,7 +366,8 @@ def visualize_test_predictions(model, test_loader, device, exp_path, log_input=T
                 output_np = outputs[i].cpu().squeeze().numpy()
 
                 # Normalize for visualization
-                input_np = (input_np - input_np.min()) / (input_np.max() - input_np.min() + 1e-6)
+                input_np = (input_np - input_np.min()) / \
+                    (input_np.max() - input_np.min() + 1e-6)
 
                 # Create visualization
                 plt.figure(figsize=(15, 5))
@@ -373,7 +388,8 @@ def visualize_test_predictions(model, test_loader, device, exp_path, log_input=T
                 plt.axis('off')
 
                 plt.tight_layout()
-                plt.savefig(os.path.join(os.path.join(exp_path, "result_viz"), f"sample_{cnt}.png"))
+                plt.savefig(os.path.join(os.path.join(
+                    exp_path, "result_viz"), f"sample_{cnt}.png"))
                 plt.close()
-                
+
                 cnt += 1
