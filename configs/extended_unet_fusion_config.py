@@ -1,9 +1,7 @@
-from utils import utils
 from models import unet_mit
 #import albumentations as A
 from torchvision import transforms as transforms
 from pathlib import Path
-from albumentations.pytorch import ToTensorV2
 from copy import deepcopy
 import sys
 import os

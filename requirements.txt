@@ -10,3 +10,4 @@ timm
 segmentation-models-pytorch
 wandb
 matplotlib
+einops
