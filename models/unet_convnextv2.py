@@ -15,7 +15,7 @@ class Unet(torch.nn.Module):
         self.upsample = torch.nn.Upsample(
             scale_factor=2, mode='bilinear', align_corners=None)
         self.depth_model = smp.UnetPlusPlus(
-            encoder_name="convnextv2_pico",
+            encoder_name="convnextv2_atto",
             encoder_weights=None,
             in_channels=3,
             classes=1,

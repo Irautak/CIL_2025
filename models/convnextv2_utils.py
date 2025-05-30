@@ -156,9 +156,10 @@ class ConvNeXtV2(nn.Module):
 
 
 class ConvNeXtV2Encoder(torch.nn.Module, EncoderMixin):
-    def __init__(self, model_name, in_channels, out_channels, depth, depths):
+    def __init__(self, model_name, in_channels, out_channels, depth, depths, output_stride=2):
         super().__init__()
         self._depth = depth
+        self._output_stride = output_stride
         self._out_channels = [in_channels] + out_channels
         self._encoder = ConvNeXtV2(depth=depth,
                                    depths=depths,

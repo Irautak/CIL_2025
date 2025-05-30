@@ -1,10 +1,8 @@
-from utils import utils
 from models import unet_convnextv2
 #import albumentations as A
 from torchvision import transforms as transforms
 from pathlib import Path
 from albumentations.pytorch import ToTensorV2
-from copy import deepcopy
 import sys
 import os
 import cv2
@@ -17,21 +15,21 @@ sys.path.append(str(root))
 
 
 # What you want to do
-WANDB_NOTES = 'ConvNextV2
+WANDB_NOTES = 'ConvNextV2'
 
-dataset_path = "/home/v.lomtev/CIL/data"
+dataset_path = "/home/v.lomtev/CIL/CIL_2025/data"
 
 
 # train parameters
 img_size = (426, 560)
 
-epochs: int = 70
+epochs: int = 45
 
 train_bs: int = 16 #16
 num_workers: int = 8
 
 val_bs: int = 16
-device = 'cuda:3'  # You need to change it for your GPU
+device = 'cuda:2'  # You need to change it for your GPU
 
 random_seed: int = 42
 
