@@ -1,3 +1,4 @@
+ipykernel
 pillow
 pandas
 pytorch_model_summary
