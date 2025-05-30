@@ -20,5 +20,5 @@ In terminal, simply run the command with the correct file paths:
 
 python run_depth_anything_v2.py 
   --encoder vitl 
-  --img-path <path> --outdir <outdir> 
+  --img-path your_path --outdir your_output_path
  
