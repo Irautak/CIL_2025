@@ -131,9 +131,7 @@ def evaluate_model(model, val_loader, device, exp_path, epoch = None,
             
 
             # Forward pass
-            
             outputs = model(inputs)
-            
             # Resize outputs to match target dimensions
             outputs = nn.functional.interpolate(
                 outputs,
@@ -340,11 +338,6 @@ def visualize_test_predictions(model, test_loader, device, exp_path):
                 plt.imshow(input_np)
                 plt.title("RGB Input")
                 plt.axis('off')
-
-                # plt.subplot(1, 3, 2)
-                # plt.imshow(target_np, cmap='plasma')
-                # plt.title("Ground Truth Depth")
-                # plt.axis('off')
 
                 plt.subplot(1, 2, 2)
                 plt.imshow(output_np, cmap='plasma')

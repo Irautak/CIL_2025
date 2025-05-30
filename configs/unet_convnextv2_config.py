@@ -34,10 +34,6 @@ device = 'cuda:2'  # You need to change it for your GPU
 random_seed: int = 42
 
 val_part: float = 0.15
-# model architecture configs
-# model_type = 'BaseUnet'
-# optimizer = 'AdamW'
-# loss_function = 'ce_dice_bceweighted'
 
 # model init
 model_params = dict(decoder_channels=[320, 160, 80, 40])
@@ -167,8 +163,6 @@ transform_train = transforms.Compose([
     transforms.Resize(img_size),
     transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
                   hue=0.1),  # Data augmentation
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomVerticalFlip(),
     transforms.Pad([8, 11, 8, 11]),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
