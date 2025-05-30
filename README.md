@@ -63,7 +63,7 @@ This branch contains the necessary code for the experimentation regarding creati
 used to generate the mentioned uncertainty maps. It has a new PyTorch Dataset class (CombDepthDataset) which makes it possible to also load these additional maps. If one wishes to run experiments 
 with these additional maps, the depth maps and uncertainty maps need to be generated. The links to get all the maps are provided in the very top section of this ReadMe file. 
 
-However, if one wishes to generate them themselves the depth maps can be obtained by cloning the respective repository for each SOTA model, installing the requirements, and then copying and running respective scripts given in the run_sota_models folder in the fusion_branch. Remember to change the file paths in the scripts regarding where the rgb images are located, as well as the path regarding where to save the depth maps. To generate the uncertainty maps, the code is given in the gen_uncertainty_map folder together with a readm me file with a description. 
+However, if one wishes to generate them themselves the depth maps can be obtained by cloning the respective repository for each SOTA model, installing the requirements, and then copying and running respective scripts given in the run_sota_models folder in the fusion_branch. Remember to change the file paths in the scripts regarding where the rgb images are located, as well as the path regarding where to save the depth maps. To generate the uncertainty maps, the code is given in the gen_uncertainty_map folder together with a readm me file with a description (again in the fusion_branch). 
 
 The respective links to the repositories of all the SOTA models are given below:
 1) ZoeDepth: https://github.com/isl-org/ZoeDepth
