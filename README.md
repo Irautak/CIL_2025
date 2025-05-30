@@ -4,6 +4,7 @@
 This repo is for all our experiments related to the CIL project at ETH. It's structured to make it easy to plug in new models, configs, datasets, etc.
 
 Group name: Whizzes
+
 Participants: Vladislav Lomtev, Lucija Tonkovic, Jing Yan, Davit Melikidze
 
 ---
