@@ -1,4 +1,3 @@
-from utils import utils
 from models import example_unet
 #import albumentations as A
 from torchvision import transforms as transforms
