@@ -1,3 +1,4 @@
+ipykernel
 pillow
 pytorch_model_summary
 albumentations
