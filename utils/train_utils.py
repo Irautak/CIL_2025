@@ -16,7 +16,7 @@ def denormalize_log_prediction(log_depth):
 
 
 def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epochs, device, exp_path,
-                mask_indicator=None, log_input=False):
+                mask_indicator=None, log_input=False, el_loss=False):
     """Train the model and save the best based on validation metrics"""
     best_val_loss = float('inf')
     best_epoch = 0
@@ -46,12 +46,32 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
 
             if mask_indicator:
                 outputs = outputs * mask
-                loss = (mask.numel()/max(mask.numel()//2, mask.sum())) * loss_func(inputs, outputs,
-                                                                                   masked_targets)
+                if el_loss:
+                    inputs_orig = nn.functional.interpolate(
+                            inputs,
+                            size=(426, 560),  # Original input dimensions
+                            mode='bilinear',
+                            align_corners=True
+                    )
+                    loss = (mask.numel()/max(mask.numel()//2, mask.sum())) * loss_func(inputs_orig,
+                                                                                       outputs,
+                                                                                       masked_targets)
+                else:
+                    loss = (mask.numel()/max(mask.numel()//2, mask.sum())) * loss_func(outputs,
+                                                                                       masked_targets)
                 # print(mask.sum(), mask.numel(), torch.min(masked_targets))
                 # print(loss)
             else:
-                loss = loss_func(inputs, outputs, targets)
+                if el_loss:
+                    inputs_orig = nn.functional.interpolate(
+                            inputs,
+                            size=(426, 560),  # Original input dimensions
+                            mode='bilinear',
+                            align_corners=True
+                    )
+                    loss = loss_func(inputs_orig, outputs, targets)
+                else:
+                    loss = loss_func(outputs, targets)
             # Backward pass and optimize
             loss.backward()
             optimizer.step()
@@ -76,9 +96,27 @@ def train_model(model, train_loader, val_loader, loss_func, optimizer, num_epoch
 
                 if mask_indicator:
                     outputs = outputs * mask
-                    loss = loss_func(inputs, outputs, masked_targets)
+                    if el_loss:
+                        inputs_orig = nn.functional.interpolate(
+                            inputs,
+                            size=(426, 560),  # Original input dimensions
+                            mode='bilinear',
+                            align_corners=True
+                        )
+                        loss = loss_func(inputs_orig, outputs, masked_targets)
+                    else:
+                        loss = loss_func(outputs, masked_targets)
                 else:
-                    loss = loss_func(inputs, outputs, targets)
+                    if el_loss:
+                        inputs_orig = nn.functional.interpolate(
+                            inputs,
+                            size=(426, 560),  # Original input dimensions
+                            mode='bilinear',
+                            align_corners=True
+                        )
+                        loss = loss_func(inputs_orig, outputs, targets)
+                    else:
+                        loss = loss_func(outputs, targets)
 
                 val_loss += loss.item() * inputs.size(0)
 

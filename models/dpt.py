@@ -8,7 +8,7 @@ from pytorch_model_summary import summary
 
 class DPT(torch.nn.Module):
     def __init__(self, decoder_channels=[256, 128, 64, 32, 16]):
-        super(Unet, self).__init__()
+        super(DPT, self).__init__()
         self.upsample = torch.nn.Upsample(
             scale_factor=2, mode='bilinear', align_corners=None)
         self.depth_model = smp.DPT(
