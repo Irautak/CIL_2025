@@ -374,18 +374,14 @@ def generate_test_predictions(model, test_loader, device, exp_path, log_input=Fa
 def visualize_test_predictions(model, test_loader, device, exp_path, log_input=True):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
-
     os.makedirs(os.path.join(exp_path, "result_viz"), exist_ok=True)
-
     cnt = 0
     with torch.no_grad():
         for inputs, filenames in tqdm(test_loader, desc="Visualizing"):
             inputs = inputs.to(device)
             batch_size = inputs.size(0)
-
             # Forward pass
             outputs = model(inputs)
-
             # Resize outputs to match target dimensions
             outputs = nn.functional.interpolate(
                 outputs,
@@ -394,40 +390,47 @@ def visualize_test_predictions(model, test_loader, device, exp_path, log_input=T
                 align_corners=True
             )
 
+            # Resize inputs simply for visualization purposes
+            inputs = inputs[...,67:-67, :] # Remove padding
+            inputs = nn.functional.interpolate(
+                inputs,
+                size=(426, 560),  # Original input dimensions
+                mode='bilinear',
+                align_corners=True
+            )
+
+            
             if log_input:
                 outputs = denormalize_log_prediction(outputs)
-
             for i in range(len(inputs)):
-
                 # Convert tensors to numpy arrays
                 input_np = inputs[i].cpu().permute(1, 2, 0).numpy()
                 output_np = outputs[i].cpu().squeeze().numpy()
-
                 # Normalize for visualization
                 input_np = (input_np - input_np.min()) / \
                     (input_np.max() - input_np.min() + 1e-6)
-
-                # Create visualization
-                plt.figure(figsize=(15, 5))
-
-                plt.subplot(1, 2, 1)
-                plt.imshow(input_np)
-                plt.title("RGB Input")
-                plt.axis('off')
-
-                # plt.subplot(1, 3, 2)
-                # plt.imshow(target_np, cmap='plasma')
-                # plt.title("Ground Truth Depth")
-                # plt.axis('off')
-
-                plt.subplot(1, 2, 2)
-                plt.imshow(output_np, cmap='plasma')
-                plt.title("Predicted Depth")
-                plt.axis('off')
-
+                
+                # Create visualization with colorbars
+                fig, axes = plt.subplots(1, 2, figsize=(18, 6))
+                
+                # RGB Input
+                axes[0].imshow(input_np)
+                axes[0].set_title("RGB Input", fontsize=14)
+                axes[0].axis('off')
+                
+                # Predicted Depth with colorbar
+                im = axes[1].imshow(output_np, cmap='plasma')
+                axes[1].set_title("Predicted Depth (DPT)", fontsize=14)
+                axes[1].axis('off')
+                
+                # Add colorbar for predicted depth
+                cbar = plt.colorbar(im, ax=axes[1], shrink=0.8, aspect=20)
+                cbar.set_label('Depth (meters)', rotation=270, labelpad=20, fontsize=12)
+                
+                
                 plt.tight_layout()
                 plt.savefig(os.path.join(os.path.join(
-                    exp_path, "result_viz"), f"sample_{cnt}.png"))
+                    exp_path, "result_viz"), f"sample_{cnt}.png"), 
+                    dpi=150, bbox_inches='tight')
                 plt.close()
-
                 cnt += 1
