@@ -17,7 +17,8 @@ Replace `<dataset_path>` with the path to your dataset, `<Train, or Test>` with 
 # Depth Anything Usage
 
 In terminal, simply run the command with the correct file paths:
-python run_depth_anything_v2.py \
-  --encoder vitl \
-  --img-path <path> --outdir <outdir> \
+
+python run_depth_anything_v2.py 
+  --encoder vitl 
+  --img-path <path> --outdir <outdir> 
  
